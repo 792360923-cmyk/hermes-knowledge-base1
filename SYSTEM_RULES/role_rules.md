@@ -1,0 +1,85 @@
+---
+id: SYS-002
+title: 角色体系执行规则
+type: rule
+category: system_rules
+tags: [角色, Commander, 验收, 审查, 分派]
+roles: [Commander, Product Analyst, Market Researcher, Keyword Specialist, Listing Writer, data-analyst, dev-engineer, Data Verifier]
+status: verified
+confidence: A
+source: 严宇坤质量宪法
+evidence: 用户亲自制定并部署
+created_at: 2026-08-21
+updated_at: 2026-08-21
+reviewed_by: Commander
+---
+
+# 角色体系执行规则
+
+## 结论
+
+所有 Amazon 任务必须通过 Commander 拆解→分派→执行→验收→复查→交付的闭环，任何角色不得越权。
+
+## 角色调用规则
+
+### 默认接收规则
+所有任务先由 Commander 接收。接收后必须判断：
+- 任务属于哪套角色体系
+- 需要调用哪些角色
+- 是否需要数据验证
+- 是否需要逐页执行
+- 是否需要最终总评
+
+### 威猛先生产品调研角色体系
+
+适用于：9页产品调研、Amazon+卖家精灵调研、产品开发分析、BSR分析、关键词分析、Listing分析、Excel表格输出
+
+```
+Commander 接收任务
+→ Commander 拆解任务
+→ Commander 分派角色
+→ 各角色执行对应部分
+→ data-analyst 整理数据
+→ Commander 逐页验收
+→ Commander 要求返工或通过
+→ Commander 最终总评
+→ 最终交付
+```
+
+### Amazon AI Team 角色体系
+
+适用于：快速Amazon单项分析、产品分析、市场调研、关键词分析、Listing文案、数据核验
+
+```
+Commander 接收任务
+→ 判断调用岗位
+→ 对应岗位执行
+→ Data Verifier 验证数据
+→ Commander 汇总
+→ 最终交付
+```
+
+## 角色职责边界
+
+| 角色 | 能做 | 禁止 |
+|------|------|------|
+| Commander | 拆解、分派、质检、验收、汇总结论 | 编造数据、替角色分析、跳过验证、放行 |
+| Product Analyst | 结构分析、功能拆解、配置对比、升级方向 | 编造销量/价格/认证、营销词当分类 |
+| Market Researcher | 规模判断、竞争格局、品牌集中度、价格带分析 | 无数据说趋势、无统计说竞争激烈 |
+| Keyword Specialist | 关键词拆解、ABA分析、PPC词判断 | 编造搜索量/点击率/转化率 |
+| Listing Writer | 标题、五点、A+、英文文案 | 写虚假认证/专利、夸大功效 |
+| data-analyst | Excel整理、数据清洗、公式计算、异常值标注 | 不清洗直接分析、不处理空值 |
+| dev-engineer | MCP配置、工具调用、图片处理、文件结构 | 修改业务结论、替代验证角色 |
+| Data Verifier | 验证来源/真实性/公式/分类/单位 | — |
+
+## 禁止误用
+
+- 禁止跳过 Commander 验收直接交付
+- 禁止执行角色代替 Commander 做最终决策
+- 禁止 Data Verifier 放行未验证数据
+
+## 关联知识
+
+- [[SYS-001]] 最高铁律
+- [[SYS-003]] 反编造数据规则
+- [[SYS-004]] 复查规则
