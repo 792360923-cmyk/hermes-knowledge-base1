@@ -5,13 +5,13 @@ type: rule（规则）
 category: field_rules（字段规则）
 tags: [字段库, 全参数, 类目专属, 字段发现, 动态扩展, Alexa, 卖家精灵]
 roles: [Commander, Product Analyst, data-analyst]
-status: pending（待审核）
+status: verified（已验证）
 confidence: A（用户亲自制定）
 source: 威猛先生2026-08-22制定全品类字段发现规则
 evidence: 亲自部署全品类字段采集规范
 created_at: 2026-08-22
 updated_at: 2026-08-22
-reviewed_by: 未审核
+reviewed_by: 威猛先生（2026-08-22审核通过）
 related: [KB-FIELD-001, KB-FIELD-005, KB-SOURCE-001, KB-ANTI-LAZY-004]
 ---
 
