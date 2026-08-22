@@ -1,12 +1,12 @@
 ---
 id:
 title:
-type:          # knowledge | case | rule | template
-category:      # field_rules | classification_rules | category_knowledge | keyword_rules | listing_rules | source_rules | prompt_templates
+type:          # knowledge（知识）| case（案例）| rule（规则）| template（模板）
+category:      # field_rules（字段规则）| classification_rules（分类规则）| category_knowledge（类目知识）| keyword_rules（关键词规则）| listing_rules（Listing规则）| source_rules（来源规则）| prompt_templates（提示词模板）
 tags: []
 roles: []
-status: pending
-confidence:    # A(多方验证) | B(来源可靠) | C(交叉验证中) | D(单来源) | E(待验证)
+status: pending（待审核）
+confidence:    # A（官方/用户文件/多次验证）| B（Amazon/卖家精灵/截图支撑）| C（单次项目验证）| D（待验证经验）| E（已否决或过期）
 source:
 evidence:
 created_at:

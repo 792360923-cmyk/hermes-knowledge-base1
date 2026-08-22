@@ -1,8 +1,8 @@
 ---
 id:
 title:
-type: review_report
-status: pending
+type: review_report（审查报告）
+status: pending（待审核）
 created_at:
 reviewed_by:
 ---
@@ -31,9 +31,9 @@ reviewed_by:
 
 ## 审查结论
 
-- [ ] 通过 → 移入 VERIFIED
-- [ ] 驳回 → 移入 REJECTED，原因：
-- [ ] 待补充 → 留在 PENDING，需要补充：
+- [ ] 通过 → 移入 VERIFIED（已验证）
+- [ ] 驳回 → 移入 REJECTED（已拒绝），原因：
+- [ ] 待补充 → 留在 PENDING（待审核），需要补充：
 
 ## 审查意见
 
