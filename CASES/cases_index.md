@@ -10,3 +10,4 @@
 | KB-FAIL-002 | 子代理三层分类合并——产品类型/外观/场景合为一列 | 2026-08-22 | 三层必须独立列，"通用">50%=偷懒 |
 | KB-FAIL-003 | Commander重新分类引入新错误——放弃重写用修正 | 2026-08-22 | 修正 > 重写，保留90%只改10% |
 | KB-FAIL-004 | Discord发.xlsx收不到——必须.zip打包 | 2026-08-22 | .xlsx必须先zip压缩再发Discord |
+| KB-FAIL-005 | automatic/dispenser/press误判为电动——必须逐ASIN问Alexa核实 | 2026-08-24 | "automatic"是营销词≠电动，无电源证据禁止归电动 |
