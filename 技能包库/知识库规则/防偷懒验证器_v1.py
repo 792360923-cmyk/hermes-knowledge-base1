@@ -156,7 +156,7 @@ SOURCE_MARKERS = [
     "Amazon", "卖家精灵", "Keepa", "ABA", "Alexa",
     "FBA计算器", "Google Patents", "官网", "用户提供", "图片判断",
     "标题", "五点", "Product Overview", "Technical Details", "Product Information",
-    "Q&A", "Review", "A+", "类目筛选",
+    "Q&A", "Review", "A+", "类目筛选", "竞品基准", "行业报告", "Keepa历史",
 ]
 
 VAGUE_SOURCES = ["网络", "亚马逊", "网上", "互联网", "平台"]
