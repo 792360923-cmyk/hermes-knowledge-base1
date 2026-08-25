@@ -297,22 +297,32 @@ def check_csv_stats(csv_path: str) -> CheckResult:
 def check_structure(text: str) -> CheckResult:
     violations = []
 
-    # 结论段数量检查
-    conclusion_sections = re.split(r'(?:结论|总结|分析|建议)', text)
-    # 找结论块——查找含"结论"关键词的段
+    # 结论段检测——锚点词去掉太宽泛的"分析"
+    CONCLUSION_ANCHORS = ['结论', '建议', '发现', '总结']
+
     conclusion_blocks = []
     for para in text.split('\n\n'):
-        if any(kw in para for kw in ['结论', '发现', '建议', '分析']):
-            sentences = [s.strip() for s in re.split(r'[。！？]', para) if len(s.strip()) > 5]
+        if any(kw in para for kw in CONCLUSION_ANCHORS):
+            # 分句：中文句号 + 英文句号(排除小数点3.14/版本1.0)
+            sentences = [s.strip() for s in re.split(r'[。！？!?]|(?<!\d)\.(?!\d)', para) if len(s.strip()) > 5]
             conclusion_blocks.append(sentences)
 
     total_conclusion_sentences = sum(len(b) for b in conclusion_blocks)
+    has_conclusion_anchor = len(conclusion_blocks) > 0
 
-    if total_conclusion_sentences < 3:
+    if not has_conclusion_anchor:
+        # 完全没有结论/建议/发现段落 → 明确的偷懒（BLOCKER）
         violations.append(Violation(
-            "ST-CONC-SHORT", "table_structure", "BLOCKER",
-            f"结论/分析句总数仅{total_conclusion_sentences}句（最少3句）",
-            "全文", "展开分析：每条结论须含数据+原因+影响+建议"
+            "ST-NO-CONCLUSION", "table_structure", "BLOCKER",
+            "全文没有「结论/建议/发现」段落",
+            "全文", "必须包含结论段：数据+原因+影响+建议"
+        ))
+    elif total_conclusion_sentences < 3:
+        # 有结论但句子不足3句 → 提示关注（WARNING，精炼结论不误杀）
+        violations.append(Violation(
+            "ST-CONC-SHORT", "table_structure", "WARNING",
+            f"结论/建议段总句数 {total_conclusion_sentences} 句（建议≥3句）",
+            "全文", "结论段建议展开：每条结论含数据+原因+影响+建议"
         ))
 
     # 文件大小检查（粗略）
@@ -430,6 +440,7 @@ TITLE_MAP = {
     "STAT-OTHER": "分类列'其他'占比过高",
     "STAT-UNKNOWN": "Unknown占比过高",
     "TBL-FEW-COLUMNS": "表格列数不足",
+    "ST-NO-CONCLUSION": "全文缺少结论段",
     "ST-CONC-SHORT": "结论段过短分析不足",
     "ST-FILE-SMALL": "输出内容过少信息不足",
 }
