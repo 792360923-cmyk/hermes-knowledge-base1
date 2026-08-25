@@ -187,9 +187,20 @@ def check_sources(text: str) -> CheckResult:
 
     # 检查每行：如果有数字但没有来源标记
     for i, line in enumerate(lines):
-        # 跳过纯标题行、分隔线
-        if re.match(r'^[\s#\-\|=*\n]*$', line):
+        stripped = line.strip()
+        # 跳过空行/分隔线
+        if not stripped or re.match(r'^[\s\-=*#]+$', stripped):
             continue
+        # 跳过标题/章节/序号行（【】包裹或纯#标题或编号标题）
+        if re.match(r'^【.*】\s*$', stripped):
+            continue
+        if re.match(r'^#+\s', stripped):
+            # 纯markdown标题（含编号如 "## 2. 结论"）
+            continue
+        if re.match(r'^\d+[.、]\s+.*$', stripped) and not re.search(r'[，。]', stripped):
+            # 纯编号行如 "2. 结论"（无逗号句号=章节标题，不是内容）
+            if len(stripped) < 20:  # 标题行通常很短
+                continue
         # 有数字的行
         if re.search(r'\d[\d,.]*', line):
             # 如果行中所有数字都是技术规格，跳过来源检测
