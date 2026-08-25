@@ -1,38 +1,4 @@
 ---
-技能包名称：产品调研第二页BSR分析技能包
-分类：产品调研
-版本：v2
-状态：当前推荐
-创建日期：2026-08-24
-更新日期：2026-08-25
-适用场景：Amazon BSR前100产品功能与差异化分析（第2页表格）
-来源：v1基础上根据威猛先生反馈优化
-是否当前推荐：是
-上一版本：v1
-下一版本：无
-维护人：Hermes小助理
-审核人：严宇坤（2026-08-25确认）
-文件路径：技能包库/产品调研/产品调研第二页BSR分析技能包_v2.md
----
-
-本版本为 v1 的升级版，主要改进（威猛先生2026-08-25反馈）：
-
-1. **去英文标题列** — 太占宽度，只用中文标题
-2. **加链接列** — 固定板块新增可点击Amazon产品页链接
-3. **图片放大** — 从60×60→70×70，行高72px适配
-4. **底色极简** — 普通行全白底，只有竞对(红)和机械按压/配件(浅黄)有颜色，禁止不同类型分色
-5. **功能卖点分级着色** — 核心卖点列按重要性着色：红=差异化核心(真空/LED/免蜡)，蓝=成本相关(无线/充电/多档)，绿=客户在意(静音/人体工学/防溢)，普通=无特殊色
-6. **Alexa核实列** — 新增"Alexa核实"列标记每个产品是否已核实
-
----
-
-以下为完整技能包内容
-
-> v2 改进：去英文标题+链接列+大图70×70+极简底色+功能分色+Alexa核实列
-
----
-
----
 name: product-analysis-page2
 description: 亚马逊BSR第二页功能与数据分析（通用，适用所有产品类目）。
 version: 2.0.0
@@ -119,6 +85,16 @@ Alexa 必问："For ASIN [ASIN], is this product electric powered, battery power
    - `#aplus_feature_div` A+内容
 2. **图片识别补充**：browser_get_images取副图信息图，curl下载后用image_analysis识别（信息图里常含Title/五点没写的参数如防水等级/续航/充电方式）
 3. **Alexa核对**：五点+参数表都没有的字段，登录Lisa账号→Open Alexa panel→问，标"Alexa来源"
+
+**⚠️ 电动/带电类竞品必须逐ASIN问Alexa核实专属字段**（KB-FAIL-006教训）：
+凡是涉及电机/电池/充电的产品，以下字段五点+参数表经常不写，必须问Alexa：
+- 电机转速(RPM)：问 "what is the motor speed in RPM?"
+- 电池容量(mAh)：问 "what is the battery capacity in mAh?"
+- 充电接口：问 "what charging port does it use, Type-C or Micro USB?"
+- 防水等级：问 "is it waterproof, and what IPX rating?"
+- 续航时间：问 "how long does the battery last per charge?"
+Alexa 答不出来的 → 填"未标注（Alexa无法确认）"，注明"Alexa来源"
+**禁止**：电动竞品的电机/电池/充电/防水字段直接留空——这是偷懒，必须问过Alexa后才填
 4. **验证对比**：竞对提取结果 vs Amazon详情页实际数据，不一致用Amazon数据覆盖
 5. **记录差异**：如果正则提取的结果和详情页不一致，说明正则有问题，要修正全局提取逻辑
 
@@ -128,8 +104,12 @@ Alexa 必问："For ASIN [ASIN], is this product electric powered, battery power
 - [ ] 竞对的**每一个字段**都是Amazon详情页验证过的，不是纯正则匹配？
 - [ ] 有没有"未标"但实际产品页面信息图里有、Alexa能答出来的字段？
 - [ ] `product_type.value_counts()` 最大类占比 < 50%？（超过50%说明分类太粗）
+- [ ] **兜底类（"通用"/"其他"等）占比 < 10%？**
 - [ ] 所有数值型字段（像素/分辨率/防抖轴数/电池容量mAh/存储容量GB）都拆成了具体数值？
 - [ ] 「详细参数」列里的 Connector Type、Connectivity Technology 等结构化字段全部解析了？
+- [ ] **中文标题100条无空白？卖家精灵翻译为空时已fallback生成？**
+- [ ] **关键词提取用了词边界（`\b`）而非子串匹配？没有"light"误判"lightweight"？**
+- [ ] **电动/带电竞品的电机/电池/充电/防水字段已逐ASIN问过Alexa？**
 
 ## 表头/格式规范
 
@@ -149,8 +129,16 @@ Alexa 必问："For ASIN [ASIN], is this product electric powered, battery power
 
 ## 中文标题生成
 从英文标题+详细参数+产品卖点提取关键词组合：品牌+材质+核心功能+规格。
-写法："{品牌} {材质} {核心功能} {规格}"。
-材质英文映射：Ceramic→陶瓷, Porcelain→瓷器, Glass→玻璃, Plastic/PP→塑料, Stainless Steel→不锈钢, Aluminum→铝合金, Silicone→硅胶, Stoneware→粗陶, Bamboo→竹子, Wood→木头, Acrylic→亚克力。中文标题必须逐条完整翻译，禁止拼凑。
+写法："{品牌} {材质/核心功能} {规格参数} {兼容/场景}"。必须逐条完整翻译英文标题的含义，禁止公式拼凑。
+
+**⚠️ 中文标题必须有 fallback 生成逻辑**：卖家精灵"标题(翻译)"字段为空时，不能留空！必须按以下公式逐条生成：
+- 公式："{品牌} + {核心功能/刷头结构} + {主词} + {材质} + {规格}"
+- 例：GRILLART 无刷毛 烧烤刷 带刮刀 不锈钢手柄 18英寸
+- 例：Leebein 电动旋转 烧烤刷 3档调速 5000mAh
+- 例：Webber 烧烤清洁剂喷雾 除油 16盎司
+- **100条不允许任何空白**，卖家精灵翻译为空时必须自动生成
+
+材质英文映射：Ceramic→陶瓷, Plastic→塑料, Stainless Steel→不锈钢, Aluminum→铝合金, Alloy Steel→合金钢, Silicone→硅胶, Bamboo→竹子, Wood→木头, Acrylic→亚克力, Brass→黄铜, Nylon→尼龙, Carbon Fiber→碳纤维, Kevlar→凯夫拉
 
 ## 多层分类方法论（所有类目适用）
 产品分类不能一个维度一刀切。必须**三层拆解**：
@@ -174,11 +162,23 @@ Alexa 必问："For ASIN [ASIN], is this product electric powered, battery power
 
 ### 分类自检
 - `clean['产品类型'].value_counts()` 数量最多的类是否超过50%？超过说明分类太粗，需要第二层拆分
+- **兜底类（"通用"/"其他"/"烧烤刷(通用)"等）占比必须 < 10%**，超过10%必须拆解
 - 是否至少有一种外观造型形成独立的一列？
 - 竞对的外观造型是否和它同价位竞品一致？（不一致说明分类有误）
 
+**⚠️ 场景词 ≠ 类型词**：五点里的 "for cast iron"（适用于铸铁）是**使用场景**，不是产品类型！只有标题明确写 "Cast Iron Brush" 才归入铸铁类型。类似坑："for porcelain grates"→场景、"for weber"→品牌适配、"for stainless steel"→材质场景，都不能当产品主分类。场景词归入"使用场景"列（第三层），不当类型（第一层）。失败案例：Grill Brushes 调研把五点里 "for cast iron" 误判成"铸铁清洁刷"类型，10件假分类。详见 KB-FAIL-006。
+
 ## 功能/卖点提取（通用方法）
 从产品卖点(英文)提取核心功能，用✅前缀，最多7项。常见映射：airtight→密封, one-hand→单手, dishwasher→洗碗机, microwave→可微波, magnetic→磁吸, water seal→水封, brushless→无刷电机, one-touch→一键, bpa-free→BPA-free, non-slip→防滑, transparent→透明, rechargeable→可充电, cordless→无线, waterless→无水, app control→APP控制, remote→遥控, timer→定时, auto shut-off→自动关机, night light→夜灯, ambient light→氛围灯, whisper-quiet/quiet→静音。功能卖点列红字加粗（差异化关键）。
+
+**⚠️ 关键词提取必须用词边界，禁止子串匹配**：
+- ❌ `'light' in text` → 会匹配 "lightweight"、"light-weight"、"FlexTexture" 的子串，误判"轻量"为"LED灯"
+- ✅ `re.search(r'\bled light\b', text)` 或精确词组 `"led light" / "built-in light" / "illuminat"`
+- ❌ `'led' in text` → 会匹配 "tangled"、"installed"、"disabled"
+- ✅ `re.search(r'\bled\b', text)` 并排除 "tangled"/"installed" 等
+- ❌ `'ce ' in text` → 会匹配 "piece"、"once"、"price"
+- ✅ 用精确词组而非子串，CE/FCC等认证从Product Overview字段提取而非全文搜
+- 失败案例：Grill Brushes 调研中 `('light','LED灯')` 把 Scrub Daddy 误判为带LED灯。详见 KB-FAIL-006。
 
 ## 结论分析（5段 + 做/不做决策）
 1. **款式/类型分布**：各类型数量+占比，主流类型及卖得好的原因。
