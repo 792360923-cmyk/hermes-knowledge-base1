@@ -27,18 +27,20 @@ related: [KB-FAIL-006, SYS-008 §十六, SYS-008 §十五]
 4. "再次验证"
 5. "再次严格的测试一遍"
 
-**每次被逼自查，都挖出新 bug，累计 8 个：**
+**每次被逼自查，都挖出新 bug，累计 10 个：**
 
 | # | Bug | 根因 |
 |---|-----|------|
 | 1 | VT-* 规则ID被误判为笼统词 | 规则ID里含"USB"字样，`check_vague_terms` 把自己规则ID当成了笼统词 |
 | 2 | "未标注"被误判为笼统 | 合规写法"电池未标注"被当成偷懒，缺排除词 |
-| 3 | Python正则 `\b` 中文混排失效 | 中文是 `\w`，`\b` 不匹配中英文边界，需 `(?<![a-zA-Z0-9])` lookbehind |
-| 4 | CSV空单元格None崩溃 | `row.get()` 返回 None 未转 str，`.strip()` 报 AttributeError |
-| 5 | "分析"关键词宽泛误判结论段 | "数据分析显示"被当成结论段，导致合规报告被 ST-CONC-SHORT 误杀 |
-| 6 | TBL-ERR 缺失标题映射 | CSV读取失败的 rule_id 不在 TITLE_MAP，生成案例标题缺失 |
-| 7 | location 含反引号 markdown 注入 | 违规位置文本含反引号，写入知识卡片时破坏 markdown 格式 |
-| 8 | 标题行含数字误判无来源 | "【第2页】"里的"2"被当成业务数据，触发 SRC-MISSING |
+| 3 | USB-C 变体未识别 | "USB-C接口"未匹配 Type-C 模式，缺变体 |
+| 4 | Python正则 `\b` 中文混排失效 | 中文是 `\w`，`\b` 不匹配中英文边界，需 `(?<![a-zA-Z0-9])` lookbehind |
+| 5 | 亚马逊来源歧义 | "亚马逊"同时在 SOURCE_MARKERS 和 VAGUE_SOURCES，逻辑冲突 |
+| 6 | CSV空单元格None崩溃 | `row.get()` 返回 None 未转 str，`.strip()` 报 AttributeError |
+| 7 | "分析"关键词宽泛误判结论段 | "数据分析显示"被当成结论段，导致合规报告被 ST-CONC-SHORT 误杀 |
+| 8 | TBL-ERR 缺失标题映射 | CSV读取失败的 rule_id 不在 TITLE_MAP，生成案例标题缺失 |
+| 9 | location 含反引号 markdown 注入 | 违规位置文本含反引号，写入知识卡片时破坏 markdown 格式 |
+| 10 | 标题行含数字误判无来源 | "【第2页】"里的"2"被当成业务数据，触发 SRC-MISSING |
 
 ## 错误原因（根本原因：交付前没跑测试）
 
