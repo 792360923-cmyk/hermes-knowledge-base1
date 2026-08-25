@@ -440,6 +440,7 @@ TITLE_MAP = {
     "STAT-OTHER": "分类列'其他'占比过高",
     "STAT-UNKNOWN": "Unknown占比过高",
     "TBL-FEW-COLUMNS": "表格列数不足",
+    "TBL-ERR": "CSV文件读取失败",
     "ST-NO-CONCLUSION": "全文缺少结论段",
     "ST-CONC-SHORT": "结论段过短分析不足",
     "ST-FILE-SMALL": "输出内容过少信息不足",
@@ -473,7 +474,9 @@ def generate_failure_case(violations: List[Violation], source_text: str = "",
         # 错误表现
         error_descriptions = []
         for v in vlist[:5]:  # 最多5条
+            # 清洗 location 中的 markdown 特殊字符（反引号/管道/星号）
             loc = v.location.strip('...')
+            loc = loc.replace('`', "'").replace('|', '/').replace('*', '-')
             error_descriptions.append(f"- {v.description}：`{loc[:80]}`")
 
         card = f"""---
