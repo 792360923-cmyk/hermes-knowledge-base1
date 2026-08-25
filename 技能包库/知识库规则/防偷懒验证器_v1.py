@@ -22,6 +22,7 @@ import argparse
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass, field
+from datetime import datetime
 
 # ─── 数据结构 ───────────────────────────────────────────────
 
@@ -396,6 +397,163 @@ def format_json_output(results: List[CheckResult]) -> str:
         "violations": all_violations,
     }, ensure_ascii=False, indent=2)
 
+# ─── 失败案例自动写入 ──────────────────────────────────────────
+
+KB_DIR = "/tmp/hermes-kb"
+FAIL_DIR = f"{KB_DIR}/案例库/失败案例"
+
+# 违规类别→类目映射
+CATEGORY_MAP = {
+    "vague_term": "field_rules（字段规则）",
+    "hollow_conclusion": "source_rules（来源规则）",
+    "no_source": "source_rules（来源规则）",
+    "stat_anomaly": "classification_rules（分类规则）",
+    "table_structure": "source_rules（来源规则）",
+}
+
+# 违规规则ID→标题前缀
+TITLE_MAP = {
+    "VT-USB": "USB笼统填写未细分",
+    "VT-BATTERY": "电池类型笼统未细分",
+    "VT-REMOTE": "遥控方式笼统未细分",
+    "VT-MATERIAL": "材质笼统未细分",
+    "VT-WATERPROOF": "防水等级笼统未细分",
+    "HL-MARKET": "市场结论空泛未数据化",
+    "HL-COMPETE": "竞争结论空泛未数据化",
+    "HL-OPPORTUNITY": "机会判断空泛未数据化",
+    "HL-VAGUE": "使用模糊词代替数据",
+    "HL-EMPTY": "使用空话套话未下结论",
+    "SRC-MISSING": "数字无来源标注",
+    "SRC-VAGUE": "数据来源笼统不具体",
+    "STAT-GENERIC": "分类列'通用'占比过高",
+    "STAT-OTHER": "分类列'其他'占比过高",
+    "STAT-UNKNOWN": "Unknown占比过高",
+    "TBL-FEW-COLUMNS": "表格列数不足",
+    "ST-CONC-SHORT": "结论段过短分析不足",
+    "ST-FILE-SMALL": "输出内容过少信息不足",
+}
+
+def generate_failure_case(violations: List[Violation], source_text: str = "",
+                           task_name: str = "未指定任务", reporter: str = "防偷懒验证器自动捕获") -> str:
+    """从违规列表生成失败案例知识卡片"""
+    if not violations:
+        return ""
+
+    now = datetime.now().strftime("%Y-%m-%d")
+    now_full = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    # 按违规类别分组
+    grouped = {}
+    for v in violations:
+        grouped.setdefault(v.rule_id, []).append(v)
+
+    cards = []
+    seq = 1
+    for rule_id, vlist in grouped.items():
+        # ID: 用时间戳+序号保证唯一
+        case_id = f"KB-FAIL-AUTO-{datetime.now().strftime('%Y%m%d%H%M%S')}-{seq:02d}"
+        title = TITLE_MAP.get(rule_id, f"验证器拦截: {rule_id}")
+        category = CATEGORY_MAP.get(vlist[0].category, "source_rules（来源规则）")
+
+        # 收集所有违规的fix_hint去重
+        fix_hints = list(dict.fromkeys(v.fix_hint for v in vlist))
+
+        # 错误表现
+        error_descriptions = []
+        for v in vlist[:5]:  # 最多5条
+            loc = v.location.strip('...')
+            error_descriptions.append(f"- {v.description}：`{loc[:80]}`")
+
+        card = f"""---
+id: {case_id}
+title: {title}——防偷懒验证器自动捕获
+type: case（案例）
+category: {category}
+tags: [失败案例, 防偷懒, 验证器自动捕获, {rule_id}]
+roles: [Commander, Data Verifier]
+status: pending（待审核）
+confidence: A（验证器程序捕获+自动生成）
+source: 防偷懒验证器 v1.1 自动捕获
+evidence: 验证器在交付前扫描中拦截了 {len(vlist)} 条 {rule_id} 违规
+created_at: {now}
+updated_at: {now}
+reviewed_by: 待审核
+related: [SYS-008 §十六, SYS-008 §五]
+---
+
+# {title}——防偷懒验证器自动捕获
+
+> 捕获时间: {now_full}
+> 任务名称: {task_name}
+> 拦截方: {reporter}
+
+## 错误表现
+
+{chr(10).join(error_descriptions[:5])}
+
+## 正确做法
+
+{chr(10).join(f'- {h}' for h in fix_hints)}
+
+## 后果
+
+- 违反 SYS-008 §五（禁止偷懒规则）+ §十六（防偷懒工程）
+- 如不修正直接交付，用户必须返工
+- 笼统/空泛/无来源的数据导致分析结论不可靠
+
+## 适用场景
+
+所有需要遵守 SYS-008 防偷懒规则的任务。
+
+## 教训
+
+{title}。验证器在交付前程序化拦截，修正后才能通过。
+
+## 禁止再犯
+
+是。
+
+## 来源证据
+
+- 防偷懒验证器 v1.1 自动捕获 ({now_full})
+- 违规数: {len(vlist)} 条 ({rule_id})
+- 违规类别: {category}
+
+## 更新记录
+
+| 日期 | 变更 | 操作人 |
+|------|------|--------|
+| {now} | 验证器自动创建（待审核） | anti_slacker.py v1.1 |
+"""
+        cards.append((case_id, card))
+        seq += 1
+
+    return cards
+
+
+def save_failure_cases(violations: List[Violation], source_text: str = "",
+                        task_name: str = "未指定任务") -> List[str]:
+    """将违规写入知识库失败案例目录，返回写入的文件路径列表"""
+    saved = []
+    cards = generate_failure_case(violations, source_text, task_name)
+    if not cards:
+        return saved
+
+    # 确保目录存在
+    fail_path = Path(FAIL_DIR)
+    if not fail_path.exists():
+        fail_path.mkdir(parents=True, exist_ok=True)
+
+    for case_id, content in cards:
+        filepath = fail_path / f"{case_id}.md"
+        try:
+            filepath.write_text(content, encoding='utf-8')
+            saved.append(str(filepath))
+        except Exception as e:
+            print(f"⚠️ 写入失败案例失败: {filepath} — {e}", file=sys.stderr)
+
+    return saved
+
 # ─── CLI 入口 ────────────────────────────────────────────────
 
 def main():
@@ -408,6 +566,7 @@ def main():
   python3 anti_slacker.py --text "USB充电 市场不错 约5000销量"  # 扫描文本片段
   python3 anti_slacker.py --csv data.csv      # 扫描CSV表格
   python3 anti_slacker.py --json report.txt   # JSON格式输出
+  python3 anti_slacker.py --save-failure --task "BSR调研" report.txt  # 违规自动写入失败案例
   echo "文本" | python3 anti_slacker.py -     # 管道输入
         """
     )
@@ -415,6 +574,10 @@ def main():
     parser.add_argument("--text", "-t", help="直接输入文本")
     parser.add_argument("--csv", "-c", help="CSV文件路径（表格统计检测）")
     parser.add_argument("--json", "-j", action="store_true", help="JSON格式输出")
+    parser.add_argument("--save-failure", "-s", action="store_true",
+                        help="违规自动写入知识库失败案例目录")
+    parser.add_argument("--task-name", default="未指定任务",
+                        help="当前任务名称（用于失败案例标注）")
     args = parser.parse_args()
 
     text = ""
@@ -448,6 +611,19 @@ def main():
         print(format_json_output(results))
     else:
         print(format_terminal_output(results))
+
+    # 违规自动写入失败案例（仅 BLOCKER 级）
+    all_violations = [v for r in results for v in r.violations]
+    blocker_violations = [v for v in all_violations if v.severity == "BLOCKER"]
+    if args.save_failure and blocker_violations:
+        saved = save_failure_cases(blocker_violations, text, args.task_name)
+        if saved:
+            print(f"\n📝 已写入 {len(saved)} 个失败案例到知识库:")
+            for s in saved:
+                print(f"   {s}")
+            print(f"   ℹ️ 状态: pending（待审核）— 需 Commander 审核后升级")
+        else:
+            print(f"\n⚠️ 失败案例写入失败，检查 {FAIL_DIR} 是否可写")
 
     blockers = sum(1 for r in results for v in r.violations if v.severity == "BLOCKER")
     return 0 if blockers == 0 else 1
