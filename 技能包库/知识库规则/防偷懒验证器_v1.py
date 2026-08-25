@@ -255,7 +255,8 @@ def check_csv_stats(csv_path: str) -> CheckResult:
 
     # 逐列统计
     for col_name in rows[0].keys():
-        values = [row.get(col_name, '') for row in rows]
+        # ⚠️ CSV空单元格DictReader返回None，必须转空字符串防崩溃
+        values = [(row.get(col_name) or '') for row in rows]
         total = len(values)
         generic_count = sum(1 for v in values if v.strip() == '通用')
         other_count = sum(1 for v in values if v.strip() in ('其他', '其它'))
