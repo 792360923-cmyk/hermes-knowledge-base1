@@ -5,7 +5,7 @@ type: knowledge
 category: 关键词规则
 tags: [关键词研究, ABA扩词, 否定词, 前台搜索, 主语词, 卖家精灵, Amazon]
 roles: [Commander, 词研, 所有角色]
-status: pending
+status: approved
 confidence: A
 source: 严宇坤提供的技能包 zip 文件，经6个产品案例验证
 evidence: 技能包内含6个case study (nail glue/castor oil/ingrown toenail/rear bike rack/foldable travel steamer/galaxy projector)
