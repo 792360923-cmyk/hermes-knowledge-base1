@@ -1,66 +1,82 @@
-import pandas as pd, os, re, requests, sys
+#!/usr/bin/env python3
+"""
+BSR100 单页分析模板 — v1.1（通用版，支持3类目）
+用法：修改"用户配置区"，然后 python3 template.py
+输入：卖家精灵导出的 BSR{类目名}Current-100-US-{日期}.xlsx
+输出：BSR_{类目名}_单页分析.xlsx
+
+支持类目（CATEGORY_TYPE 选择）：
+  "bands"  = 替换表带（适配设备/材质/外观/扣环/佩戴/防水）
+  "smoker" = 威士忌烟熏器（电动/火枪/材质/充电/LED/风扇/木屑/冷烟/喷枪）
+  "shaker" = 鸡尾酒调酒器（套装/冰石/件数/材质/颜色/支架/摇酒器/配件）
+"""
+import pandas as pd, os, re, requests, sys, datetime
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.drawing.image import Image as XLImage
-from openpyxl.worksheet.datavalidation import DataValidation
 from PIL import Image
 from io import BytesIO
-import datetime
 
-sys.setrecursionlimit(5000)
+# ══════════════════ 用户配置区 ══════════════════
+EXCEL_PATH   = "/root/.hermes/cache/documents/doc_xxx.xlsx"  # BSR前100文件路径
+CATEGORY_TYPE = "bands"   # "bands" | "smoker" | "shaker"
+TARGET_ASIN  = "B0XXXXXXX"    # 目标ASIN
+# 目标赛道（同此值的才标蓝）— 按类目填：
+#   bands:  TARGET_VALUE = "Whoop 5.0"（适配设备）
+#   smoker: TARGET_VALUE = "电动烟熏器"（类型）
+#   shaker: TARGET_VALUE = "摇酒器套装"（类型）
+TARGET_VALUE = "Whoop 5.0"
+CATEGORY_NAME = "替换表带"
+OUTPUT = "/tmp/BSR_分析结果.xlsx"
 
-EXCHANGE = 6.74; TODAY = "2026-09-07"
+# ══════════════════ 汇率 ══════════════════
+def get_rate():
+    try:
+        r = requests.get("https://api.exchangerate-api.com/v4/latest/USD", timeout=5)
+        return float(r.json()["rates"]["CNY"])
+    except:
+        return 7.25
+EXCHANGE = get_rate()
+TODAY = datetime.datetime.now().strftime("%Y-%m-%d")
+print(f"汇率: 1 USD = {EXCHANGE} CNY")
 
-# ===== LOAD =====
-df = pd.read_excel('/root/.hermes/cache/documents/doc_fee536cc1a28_BSRReplacement-BandsCurrent-100-US-20260907.xlsx', engine='openpyxl')
+# ══════════════════ 数据加载 ══════════════════
+df = pd.read_excel(EXCEL_PATH, engine='openpyxl')
 
 def gv(r, c):
-    for k in [c, c.lower()]: 
-        if k in r: v=r[k]; return None if pd.isna(v) else v
+    for k in [c, c.lower()]:
+        if k in r: v = r[k]; return None if pd.isna(v) else v
     return None
 
-# ===== DEEP CLASSIFY =====
-def deep_classify(row):
+official_brands = ['whoop','fitbit','apple','garmin','adidas','nike','under armour','google']
+
+# ══════════════════════════════════════════════════════════════
+# 类目A: 替换表带 (bands)
+# ══════════════════════════════════════════════════════════════
+def classify_bands(row):
     title = str(gv(row,'商品标题') or '').lower()
     bullets = str(gv(row,'产品卖点') or '').lower()
     params = str(gv(row,'详细参数') or '').lower()
     full = title + ' ' + bullets + ' ' + params
     brand = str(gv(row,'品牌') or '').lower().strip()
-    
     d = {}
-    
-    # ── 1. DEVICE PRECISE ──
+    # 设备
     if 'whoop 5.0' in full: d['device'] = 'Whoop 5.0'
-    elif 'whoop 4.0' in full: d['device'] = 'Whoop 4.0'
-    elif 'whoop' in full: d['device'] = 'Whoop通用'
     elif 'fitbit versa 4' in full or 'fitbit sense 2' in full: d['device'] = 'Fitbit Versa4/Sense2'
-    elif 'fitbit sense 2' in full or 'fitbit versa 3' in full or 'fitbit sense' in title: d['device'] = 'Fitbit Versa3/Sense'
-    elif 'fitbit versa 2' in full or 'fitbit versa lite' in full: d['device'] = 'Fitbit Versa2/Lite'
-    elif 'fitbit versa' in full: d['device'] = 'Fitbit Versa系列'
+    elif 'fitbit versa 3' in full or 'fitbit sense' in title: d['device'] = 'Fitbit Versa3/Sense'
     elif 'fitbit charge 6' in full: d['device'] = 'Fitbit Charge6'
     elif 'fitbit charge 5' in full: d['device'] = 'Fitbit Charge5'
-    elif 'fitbit charge 4' in full: d['device'] = 'Fitbit Charge4'
-    elif 'fitbit charge' in full: d['device'] = 'Fitbit Charge系列'
     elif 'fitbit inspire 3' in full: d['device'] = 'Fitbit Inspire3'
-    elif 'fitbit inspire 2' in full: d['device'] = 'Fitbit Inspire2'
-    elif 'fitbit inspire' in full: d['device'] = 'Fitbit Inspire系列'
-    elif 'fitbit luxe' in full: d['device'] = 'Fitbit Luxe'
     elif 'fitbit air' in full or 'google fitbit air' in full: d['device'] = 'Google Fitbit Air'
-    elif 'fitbit' in full: d['device'] = 'Fitbit通用'
-    elif 'garmin vivoactive' in full: d['device'] = 'Garmin Vivoactive 20mm'
-    elif 'garmin forerunner' in full: d['device'] = 'Garmin Forerunner 20mm'
-    elif 'garmin lily' in full: d['device'] = 'Garmin Lily 14mm'
     elif 'garmin' in full: d['device'] = 'Garmin通用'
     elif 'apple watch' in full: d['device'] = 'Apple Watch'
-    elif 'amazfit' in full: d['device'] = 'Amazfit Helio'
     elif 'hume' in full: d['device'] = 'Hume 2.0'
+    elif 'amazfit' in full: d['device'] = 'Amazfit Helio'
     elif 'casio' in full: d['device'] = 'Casio'
-    elif brand in ['adidas','nike','under armour'] and 'wristband' in title: d['device'] = '运动腕带'
-    elif 'wristband' in title and brand in ['adidas','nike','under armour']: d['device'] = '运动腕带'
+    elif brand in ['adidas','nike','under armour']: d['device'] = '运动腕带'
     else: d['device'] = '其他'
-    
-    # ── 2. MATERIAL (16 sub-types) ──
+    # 材质 16细分
     if 'lace' in title and 'silicone' in full: m = '硅胶蕾丝(Lace Silicone)'
     elif 'silicone' in full:
         if 'soft' in full: m = '硅胶软质(Soft Silicone)'
@@ -69,13 +85,13 @@ def deep_classify(row):
         else: m = '硅胶标准(Silicone)'
     elif 'nylon' in full or 'woven' in full or 'knit' in full:
         if 'braided' in full: m = '尼龙编织(Braided Nylon)'
-        elif 'elastic' in full and 'nylon' in full: m = '尼龙弹力(Elastic Nylon)'
+        elif 'elastic' in full: m = '尼龙弹力(Elastic Nylon)'
         elif 'woven' in full or 'knit' in full: m = '尼龙针织(Woven/Knit Nylon)'
         elif 'bicep' in full: m = '尼龙臂带(Bicep Nylon)'
         elif 'loop' in title: m = '尼龙回环(Sport Loop Nylon)'
-        elif 'super' in full and ('knit' in full or 'nylon' in full): m = '尼龙高端(SuperKnit Nylon)'
+        elif 'superknit' in full or 'super knit' in full: m = '尼龙高端(SuperKnit Nylon)'
         else: m = '尼龙标准(Nylon)'
-    elif 'stainless steel' in full or 'metal mesh' in full or 'steel' in params:
+    elif 'stainless steel' in full or 'metal mesh' in full:
         if 'mesh' in full: m = '不锈钢编织网(Metal Mesh)'
         elif 'milanese' in full: m = '不锈钢米兰尼斯(Milanese)'
         elif 'x-shape' in title: m = '不锈钢X型(X-Shape Metal)'
@@ -87,140 +103,319 @@ def deep_classify(row):
     elif 'terry' in full or 'cotton' in full: m = '棉质毛巾(Cotton Terry)'
     else: m = '未标注'
     d['material'] = m
-    
-    # ── 3. APPEARANCE STYLE ──
+    # 外观 10种
     if 'lace' in title and 'silicone' in full: a = '蕾丝镂空(Lace Cutout)'
-    elif 'braided' in full: a = '编织纹理(Braided Pattern)'
-    elif 'woven' in full or 'knit' in full: a = '针织纹理(Knit/Woven)'
-    elif 'metal mesh' in full or ('mesh' in title and 'metal' in full): a = '金属编网(Metal Mesh)'
+    elif 'braided' in full: a = '编织纹理(Braided)'
+    elif 'woven' in full or 'knit' in full: a = '针织纹理(Woven/Knit)'
+    elif 'metal mesh' in full: a = '金属编网(Metal Mesh)'
     elif 'milanese' in full: a = '米兰尼斯(Milanese Loop)'
     elif 'floral' in full or 'engraved' in full: a = '花纹雕刻(Floral/Engraved)'
     elif 'loop' in title: a = '回环式(Loop Style)'
     elif 'two-tone' in title: a = '双色拼接(Two-Tone)'
-    elif 'solid' in full or 'silicone' in full and 'lace' not in title: a = '纯色素面(Solid Color)'
-    else: a = '纯色素面(Solid Color)'
+    else: a = '纯色素面(Solid)'
     d['appearance'] = a
-    
-    # ── 4. CLASP ──
+    # 扣环 7种
     if 'hook & loop' in full or 'hook and loop' in full: c = '魔术贴(Hook&Loop)'
-    elif 'magnetic' in full and ('clasp' in full or 'buckle' in full or 'closure' in full or 'band' in full): c = '磁吸扣(Magnetic)'
-    elif 'magnetic' in full: c = '磁吸(Magnetic)'
+    elif 'magnetic' in full: c = '磁吸扣(Magnetic)'
     elif 'buckle' in full and 'pin' in full: c = '针扣(Pin Buckle)'
     elif 'buckle' in full: c = '卡扣(Buckle)'
     elif 'pin' in full and 'tuck' in full: c = '针扣(Pin&Tuck)'
     elif 'clasp' in full: c = '扣环(Clasp)'
-    elif 'adjustable' in full and 'nylon' in full: c = '可调节(Adjustable)'
     else: c = '未标注'
     d['clasp'] = c
-    
-    # ── 5. BRAND TYPE ──
-    official = ['whoop','fitbit','apple','garmin','adidas','nike','under armour','google']
-    d['brand_type'] = '官方原装' if brand in official else '第三方'
-    
-    # ── 6. WEAR POSITION ──
+    d['brand_type'] = '官方原装' if brand in official_brands else '第三方'
     d['position'] = '臂带(Bicep)' if 'bicep' in full else '腕带(Wrist)'
-    
-    # ── 7. WATERPROOF ──
-    if 'waterproof' in full: d['waterproof'] = '防水(Waterproof)'
-    elif 'water resistant' in full or 'water-resist' in full: d['waterproof'] = '抗水(WR)'
-    elif 'sweatproof' in full: d['waterproof'] = '防汗(Sweatproof)'
-    else: d['waterproof'] = '未标注'
-    
-    # ── 8. PACK ──
-    m = re.search(r'(\d+)\s*pack', full)
-    d['pack'] = int(m.group(1)) if m else 1
-    
-    # ── 9. WIDTH ──
-    m = re.search(r'(\d+)\s*mm', full)
-    d['width'] = f"{m.group(1)}mm" if m else '未标注'
-    
-    # ── 10. IS COMPETITOR ──
-    # Target = B0FG7Y4VTD (omee Whoop 5.0)
-    # Competitors = Whoop 5.0 compatible bands
-    d['is_competitor'] = (d['device'] == 'Whoop 5.0')
-    
+    if 'waterproof' in full: w = '防水(Waterproof)'
+    elif 'water resistant' in full: w = '抗水(WR)'
+    elif 'sweatproof' in full: w = '防汗(Sweatproof)'
+    else: w = '未标注'
+    d['waterproof'] = w
+    m = re.search(r'(\d+)\s*pack', full); d['pack'] = int(m.group(1)) if m else 1
+    m = re.search(r'(\d+)\s*mm', full); d['width'] = f"{m.group(1)}mm" if m else '未标注'
+    d['is_competitor'] = (d['device'] == TARGET_VALUE)
     return d
 
-for idx, row in df.iterrows():
-    info = deep_classify(row)
-    for k, v in info.items():
-        df.at[idx, k] = v
-
-# ===== GENERATE CHINESE TITLES =====
-def make_cn_title(row):
+def cn_title_bands(row):
     brand = str(gv(row,'品牌') or '')
     device = row.get('device','')
-    mat = row.get('material','')
-    app = row.get('appearance','')
+    mat = str(row.get('material','')).split('(')[0]
+    app = str(row.get('appearance','')).split('(')[0]
     pack = row.get('pack',1)
-    
-    # Short material
-    mat_short = mat.split('(')[0] if '(' in str(mat) else str(mat)
-    app_short = app.split('(')[0] if '(' in str(app) else str(app)
-    
-    # Device short name
-    dev_map = {
-        'Whoop 5.0':'Whoop5.0', 'Fitbit Versa4/Sense2':'Fitbit Versa4/Sense2',
-        'Fitbit Charge6':'Fitbit Charge6', 'Google Fitbit Air':'Fitbit Air',
-        'Fitbit Inspire3':'Fitbit Inspire3', 'Apple Watch':'Apple Watch',
-        'Garmin通用':'Garmin', '运动腕带':'运动腕带'
-    }
-    dev_short = dev_map.get(device, device)
-    
-    parts = [f"[{dev_short}]", brand]
+    parts = [f"[{device}]", brand]
     if pack > 1: parts.append(f"{pack}件装")
-    parts.append(f"{mat_short}{app_short}")
-    
+    parts.append(f"{mat}{app}")
     return ' '.join(parts)
 
-df['cn_title'] = df.apply(make_cn_title, axis=1)
+def selling_bands(row):
+    full = (str(gv(row,'商品标题') or '') + ' ' + str(gv(row,'产品卖点') or '')).lower()
+    pts = []
+    for en,cn in {'soft':'柔软','breathable':'透气','stretchy':'弹力','waterproof':'防水',
+                  'sweatproof':'防汗','washable':'可水洗','quick-dry':'速干','lightweight':'超轻',
+                  'durable':'耐用','skin-friendly':'亲肤','easy install':'易安装','no tools':'免工具',
+                  'adjustable':'可调节','magnetic':'磁吸扣','gift':'礼盒','lace':'蕾丝镂空',
+                  'floral':'花纹雕刻','engraved':'雕刻'}.items():
+        if en in full: pts.append(cn)
+    m = re.search(r'(\d+)\s*pack', full)
+    if m and int(m.group(1)) >= 3: pts.append('多件套装')
+    return '，'.join(pts[:6]) if pts else '—'
 
-# ===== TRANSLATE BULLETS (key points extraction) =====
-def extract_selling_points(row):
-    """Extract key selling points from English bullets, output as Chinese summary"""
-    bullets_en = str(gv(row,'产品卖点') or '')
+BANDS_HEADERS = [
+    "#","图","中文标题","品牌","适配设备","材质细分","外观类型","扣环",
+    "价格$","Prime$","Coupon","评分","评数","上架","ASIN","链接",
+    "月销","月销$","月销¥","包装","佩戴","防水","宽度",
+    "品牌类型","AC","BSeller","变体","天数","LQS","FBA","运费$","A+","视频","卖点(中文)"
+]
+BANDS_ROW = lambda row, idx, asin, is_tgt: [
+    idx+1, None, row.get('cn_title',''), gv(row,'品牌'),
+    row.get('device',''), row.get('material',''), row.get('appearance',''), row.get('clasp',''),
+    f"${gv(row,'价格($)'):,.2f}" if gv(row,'价格($)') and not pd.isna(gv(row,'价格($)')) else '',
+    f"${gv(row,'Prime价格($)'):,.2f}" if gv(row,'Prime价格($)') and not pd.isna(gv(row,'Prime价格($)')) else '—',
+    str(gv(row,'Coupon') or '—'), gv(row,'评分'),
+    f"{int(gv(row,'评分数')):,}" if gv(row,'评分数') and not pd.isna(gv(row,'评分数')) else '',
+    str(gv(row,'上架时间') or '')[:10], asin,
+    gv(row,'商品详情页链接') or f"https://www.amazon.com/dp/{asin}",
+    f"{int(gv(row,'月销量')):,}" if gv(row,'月销量') and not pd.isna(gv(row,'月销量')) else '',
+    f"${gv(row,'月销售额($)'):,.0f}" if gv(row,'月销售额($)') and not pd.isna(gv(row,'月销售额($)')) else '',
+    f"¥{gv(row,'月销售额($)')*EXCHANGE:,.0f}" if gv(row,'月销售额($)') and not pd.isna(gv(row,'月销售额($)')) else '',
+    str(row.get('pack','1')), row.get('position',''), row.get('waterproof',''), row.get('width',''),
+    row.get('brand_type',''),
+    '✅' if str(gv(row,"Amazon's Choice")or'').upper()=='Y' else '',
+    '✅' if str(gv(row,'Best Seller标识')or'').upper()=='Y' else '',
+    str(gv(row,'变体数') or '1'), str(gv(row,'上架天数') or ''), str(gv(row,'LQS') or ''),
+    str(gv(row,'配送方式') or ''),
+    f"${gv(row,'FBA($)'):,.2f}" if gv(row,'FBA($)') and not pd.isna(gv(row,'FBA($)')) else '—',
+    '✅' if str(gv(row,'A+页面')or'').upper()=='Y' else '',
+    '✅' if str(gv(row,'视频介绍')or'').upper()=='Y' else '',
+    row.get('卖点中文',''),
+]
+
+# ══════════════════════════════════════════════════════════════
+# 类目B: 威士忌烟熏器 (smoker)
+# ══════════════════════════════════════════════════════════════
+def classify_smoker(row):
     title = str(gv(row,'商品标题') or '').lower()
-    full = (title + ' ' + bullets_en).lower()
-    
-    points = []
-    
-    # Material claims
-    if 'soft' in full and 'silicone' in full: points.append('柔软硅胶')
-    if 'breathable' in full: points.append('透气')
-    if 'stretchy' in full or 'elastic' in full: points.append('弹力伸缩')
-    if 'lightweight' in full: points.append('超轻')
-    if 'durable' in full: points.append('耐用')
-    if 'skin-friendly' in full: points.append('亲肤')
-    
-    # Feature claims
-    if 'waterproof' in full: points.append('防水')
-    if 'sweatproof' in full or 'sweat-proof' in full: points.append('防汗')
-    if 'washable' in full: points.append('可水洗')
-    if 'quick-dry' in full or 'quick dry' in full: points.append('速干')
-    if 'adjustable' in full: points.append('可调节')
-    if 'easy install' in full or 'easy to install' in full: points.append('易安装')
-    if 'no tools' in full: points.append('免工具')
-    if 'one-click' in full or 'one click' in full: points.append('一键拆卸')
-    
-    # Design
-    if 'lace' in title: points.append('蕾丝镂空设计')
-    if 'floral' in full or 'engraved' in full: points.append('花纹雕刻')
-    if '2 pack' in full or '3 pack' in full or 'multi' in full: points.append('多件套装')
-    if 'gift' in full: points.append('礼盒装')
-    
-    # Specific claims
-    if 'secure' in full: points.append('牢固不脱落')
-    if 'precise cutout' in full or 'precise cutouts' in full: points.append('精准开孔')
-    if 'compatible' in full: points.append('完美兼容')
-    if 'magnetic' in full: points.append('磁吸扣')
-    if 'bicep' in full: points.append('臂带式')
-    
-    return '，'.join(points[:6]) if points else '—'
+    bullets = str(gv(row,'产品卖点') or '').lower()
+    params = str(gv(row,'详细参数') or '').lower()
+    full = title + ' ' + bullets + ' ' + params
+    brand = str(gv(row,'品牌') or '').lower().strip()
+    d = {}
+    # 类型
+    if 'electric' in title or 'rechargeable' in title: d['type'] = '电动烟熏器'
+    elif 'torch' in full: d['type'] = '火枪烟熏器'
+    else: d['type'] = '烟熏器'
+    # 材质
+    if 'stainless steel' in full: m = '不锈钢'
+    elif 'wood' in full or 'mahogany' in full or 'walnut' in full: m = '木质'
+    elif 'oak' in full: m = '橡木'
+    elif 'plastic' in full or 'abs' in full: m = '塑料'
+    else: m = '未标注'
+    d['material'] = m
+    # 充电方式（强制细分，禁止笼统USB）
+    if 'usb-c' in full or 'type-c' in full or 'type c' in full: d['充电'] = 'USB-C'
+    elif 'usb' in full: d['充电'] = 'USB(接口未确认)'
+    else: d['充电'] = '未标注'
+    # 功能标记
+    d['LED'] = '✅' if 'led' in full else ''
+    d['显示屏'] = '✅' if ('display' in full or 'screen' in full) else ''
+    d['安全盖'] = '✅' if ('magnetic' in full or 'safety cover' in full or 'auto' in full) else ''
+    d['风扇'] = '✅' if 'fan' in full else ''
+    # 木屑数
+    m = re.search(r'(\d+)\s*(wood chip|chips|flavor|flavors)', full)
+    d['木屑'] = f"{m.group(1)}种" if m else '未标注'
+    d['冷烟'] = '✅' if 'cold smoke' in full else ''
+    d['含喷枪'] = '✅' if 'torch' in full else ''
+    d['过滤嘴'] = '✅' if ('filter' in full or 'mesh' in full) else ''
+    d['礼盒'] = '✅' if 'gift' in full else ''
+    d['brand_type'] = '官方' if brand in official_brands else '第三方'
+    d['is_competitor'] = (d['type'] == TARGET_VALUE)
+    return d
 
-df['卖点中文'] = df.apply(extract_selling_points, axis=1)
+def cn_title_smoker(row):
+    brand = str(gv(row,'品牌') or '')
+    t = row.get('type','')
+    mat = row.get('material','')
+    ch = row.get('充电','')
+    chips = row.get('木屑','')
+    parts = [f"[{t}]", brand, mat]
+    if ch not in ('未标注',''): parts.append(ch)
+    if chips not in ('未标注',''): parts.append(chips)
+    if row.get('LED')=='✅': parts.append('LED')
+    if row.get('安全盖')=='✅': parts.append('安全盖')
+    return ' '.join(parts)
 
-# Download thumbnails
-img_dir = "/tmp/bands_img"
+def selling_smoker(row):
+    full = (str(gv(row,'商品标题') or '') + ' ' + str(gv(row,'产品卖点') or '')).lower()
+    pts = []
+    for en,cn in {'no butane':'无需丁烷','usb':'USB充电','led':'LED灯','electric':'电动',
+                  'rechargeable':'可充电','waterproof':'防水','gift':'礼盒装','cold smoke':'冷烟',
+                  'smoke':'烟熏','magnetic':'磁吸盖','fan':'风扇','wood chip':'木屑'}.items():
+        if en in full: pts.append(cn)
+    m = re.search(r'(\d+)\s*(wood chip|chips|flavor)', full)
+    if m: pts.append(f"{m.group(1)}种木屑")
+    return '，'.join(pts[:6]) if pts else '—'
+
+SMOKER_HEADERS = [
+    "#","图","中文标题","品牌","类型","材质","充电","LED","显示屏","安全盖","风扇",
+    "价格$","Prime$","Coupon","评分","评数","上架","ASIN","链接",
+    "月销","月销$","月销¥","木屑","冷烟","含喷枪","过滤嘴","礼盒",
+    "品牌类型","AC","BSeller","变体","天数","LQS","FBA","运费$","A+","视频","卖点(中文)"
+]
+SMOKER_ROW = lambda row, idx, asin, is_tgt: [
+    idx+1, None, row.get('cn_title',''), gv(row,'品牌'),
+    row.get('type',''), row.get('material',''), row.get('充电',''), row.get('LED',''),
+    row.get('显示屏',''), row.get('安全盖',''), row.get('风扇',''),
+    f"${gv(row,'价格($)'):,.2f}" if gv(row,'价格($)') and not pd.isna(gv(row,'价格($)')) else '',
+    f"${gv(row,'Prime价格($)'):,.2f}" if gv(row,'Prime价格($)') and not pd.isna(gv(row,'Prime价格($)')) else '—',
+    str(gv(row,'Coupon') or '—'), gv(row,'评分'),
+    f"{int(gv(row,'评分数')):,}" if gv(row,'评分数') and not pd.isna(gv(row,'评分数')) else '',
+    str(gv(row,'上架时间') or '')[:10], asin,
+    gv(row,'商品详情页链接') or f"https://www.amazon.com/dp/{asin}",
+    f"{int(gv(row,'月销量')):,}" if gv(row,'月销量') and not pd.isna(gv(row,'月销量')) else '',
+    f"${gv(row,'月销售额($)'):,.0f}" if gv(row,'月销售额($)') and not pd.isna(gv(row,'月销售额($)')) else '',
+    f"¥{gv(row,'月销售额($)')*EXCHANGE:,.0f}" if gv(row,'月销售额($)') and not pd.isna(gv(row,'月销售额($)')) else '',
+    row.get('木屑',''), row.get('冷烟',''), row.get('含喷枪',''), row.get('过滤嘴',''), row.get('礼盒',''),
+    row.get('brand_type',''),
+    '✅' if str(gv(row,"Amazon's Choice")or'').upper()=='Y' else '',
+    '✅' if str(gv(row,'Best Seller标识')or'').upper()=='Y' else '',
+    str(gv(row,'变体数') or '1'), str(gv(row,'上架天数') or ''), str(gv(row,'LQS') or ''),
+    str(gv(row,'配送方式') or ''),
+    f"${gv(row,'FBA($)'):,.2f}" if gv(row,'FBA($)') and not pd.isna(gv(row,'FBA($)')) else '—',
+    '✅' if str(gv(row,'A+页面')or'').upper()=='Y' else '',
+    '✅' if str(gv(row,'视频介绍')or'').upper()=='Y' else '',
+    row.get('卖点中文',''),
+]
+
+# ══════════════════════════════════════════════════════════════
+# 类目C: 鸡尾酒调酒器 (shaker)
+# ══════════════════════════════════════════════════════════════
+def classify_shaker(row):
+    title = str(gv(row,'商品标题') or '').lower()
+    bullets = str(gv(row,'产品卖点') or '').lower()
+    params = str(gv(row,'详细参数') or '').lower()
+    full = title + ' ' + bullets + ' ' + params
+    brand = str(gv(row,'品牌') or '').lower().strip()
+    d = {}
+    # 类型
+    if 'whiskey stone' in full or 'ice cube' in full or 'chilling rock' in full or 'chilling stone' in full:
+        d['type'] = '冰石/冰模'
+    elif 'muddler' in title or 'mixing spoon' in title or 'bar spoon' in title or 'jigger' in title:
+        d['type'] = '单品工具'
+    elif 'shaker' in full or 'bartender' in full or 'bar set' in full or 'mixology' in full or 'cocktail kit' in full:
+        d['type'] = '摇酒器套装'
+    else: d['type'] = '其他'
+    # 件数
+    m = re.search(r'(\d+)\s*(piece|pc|pcs)', full)
+    d['件数'] = f"{m.group(1)}件" if m else '未标注'
+    # 材质
+    if 'stainless steel' in full: m = '不锈钢'
+    elif 'glass' in full: m = '玻璃'
+    elif 'wood' in full or 'bamboo' in full: m = '木质'
+    elif 'plastic' in full: m = '塑料'
+    elif 'copper' in full: m = '铜'
+    else: m = '未标注'
+    d['material'] = m
+    # 颜色
+    color_map = [('silver','银色'),('black','黑色'),('gold','金色'),('copper','铜色'),('rose gold','玫瑰金'),('gunmetal','枪灰')]
+    d['颜色'] = next((cn for en,cn in color_map if en in full), '未标注')
+    # 支架
+    if 'stand' in full and 'bamboo' in full: s = '竹支架'
+    elif 'stand' in full and 'acrylic' in full: s = '亚克力支架'
+    elif 'stand' in full and 'wood' in full: s = '木支架'
+    elif 'stand' in full: s = '有支架'
+    else: s = '无'
+    d['支架'] = s
+    # 摇酒器类型
+    if 'boston' in full: sh = '波士顿'
+    elif 'cobbler' in full: sh = '日式Cobbler'
+    elif 'shaker' in full: sh = '普通'
+    else: sh = '—'
+    d['摇酒器'] = sh
+    # 配件
+    d['捣棒'] = '✅' if 'muddler' in full else ''
+    d['量杯'] = '✅' if 'jigger' in full else ''
+    d['过滤器'] = '✅' if 'strainer' in full else ''
+    d['配方卡'] = '✅' if ('recipe' in full or 'recipe card' in full) else ''
+    d['礼盒'] = '✅' if 'gift' in full else ''
+    d['便携包'] = '✅' if ('bag' in full or 'travel' in full) else ''
+    d['brand_type'] = '官方' if brand in official_brands else '第三方'
+    d['is_competitor'] = (d['type'] == TARGET_VALUE)
+    return d
+
+def cn_title_shaker(row):
+    brand = str(gv(row,'品牌') or '')
+    t = row.get('type','')
+    mat = row.get('material','')
+    n = row.get('件数','')
+    col = row.get('颜色','')
+    parts = [f"[{t}]", brand, mat]
+    if n not in ('未标注',''): parts.append(n)
+    if col not in ('未标注',''): parts.append(col)
+    return ' '.join(parts)
+
+def selling_shaker(row):
+    full = (str(gv(row,'商品标题') or '') + ' ' + str(gv(row,'产品卖点') or '')).lower()
+    pts = []
+    for en,cn in {'stainless steel':'不锈钢','dishwasher':'可洗碗机','leak-proof':'防漏',
+                  'leak proof':'防漏','rust':'防锈','gift':'礼盒','recipe':'配方卡',
+                  'bamboo':'竹支架','18/8':'18/8钢','304':'304钢','boston':'波士顿'}.items():
+        if en in full: pts.append(cn)
+    m = re.search(r'(\d+)\s*(piece|pc|pcs)', full)
+    if m: pts.append(f"{m.group(1)}件套")
+    return '，'.join(pts[:6]) if pts else '—'
+
+SHAKER_HEADERS = [
+    "#","图","中文标题","品牌","类型","材质","颜色","件数","支架","摇酒器",
+    "价格$","Prime$","Coupon","评分","评数","上架","ASIN","链接",
+    "月销","月销$","月销¥","捣棒","量杯","过滤器","配方卡","礼盒","便携包",
+    "品牌类型","AC","BSeller","变体","天数","LQS","FBA","运费$","A+","视频","卖点(中文)"
+]
+SHAKER_ROW = lambda row, idx, asin, is_tgt: [
+    idx+1, None, row.get('cn_title',''), gv(row,'品牌'),
+    row.get('type',''), row.get('material',''), row.get('颜色',''), row.get('件数',''),
+    row.get('支架',''), row.get('摇酒器',''),
+    f"${gv(row,'价格($)'):,.2f}" if gv(row,'价格($)') and not pd.isna(gv(row,'价格($)')) else '',
+    f"${gv(row,'Prime价格($)'):,.2f}" if gv(row,'Prime价格($)') and not pd.isna(gv(row,'Prime价格($)')) else '—',
+    str(gv(row,'Coupon') or '—'), gv(row,'评分'),
+    f"{int(gv(row,'评分数')):,}" if gv(row,'评分数') and not pd.isna(gv(row,'评分数')) else '',
+    str(gv(row,'上架时间') or '')[:10], asin,
+    gv(row,'商品详情页链接') or f"https://www.amazon.com/dp/{asin}",
+    f"{int(gv(row,'月销量')):,}" if gv(row,'月销量') and not pd.isna(gv(row,'月销量')) else '',
+    f"${gv(row,'月销售额($)'):,.0f}" if gv(row,'月销售额($)') and not pd.isna(gv(row,'月销售额($)')) else '',
+    f"¥{gv(row,'月销售额($)')*EXCHANGE:,.0f}" if gv(row,'月销售额($)') and not pd.isna(gv(row,'月销售额($)')) else '',
+    row.get('捣棒',''), row.get('量杯',''), row.get('过滤器',''), row.get('配方卡',''),
+    row.get('礼盒',''), row.get('便携包',''),
+    row.get('brand_type',''),
+    '✅' if str(gv(row,"Amazon's Choice")or'').upper()=='Y' else '',
+    '✅' if str(gv(row,'Best Seller标识')or'').upper()=='Y' else '',
+    str(gv(row,'变体数') or '1'), str(gv(row,'上架天数') or ''), str(gv(row,'LQS') or ''),
+    str(gv(row,'配送方式') or ''),
+    f"${gv(row,'FBA($)'):,.2f}" if gv(row,'FBA($)') and not pd.isna(gv(row,'FBA($)')) else '—',
+    '✅' if str(gv(row,'A+页面')or'').upper()=='Y' else '',
+    '✅' if str(gv(row,'视频介绍')or'').upper()=='Y' else '',
+    row.get('卖点中文',''),
+]
+
+# ══════════════════ 类目分发 ══════════════════
+DISPATCH = {
+    'bands':  (classify_bands,  cn_title_bands,  selling_bands,  BANDS_HEADERS,  BANDS_ROW),
+    'smoker': (classify_smoker, cn_title_smoker, selling_smoker, SMOKER_HEADERS, SMOKER_ROW),
+    'shaker': (classify_shaker, cn_title_shaker, selling_shaker, SHAKER_HEADERS, SHAKER_ROW),
+}
+if CATEGORY_TYPE not in DISPATCH:
+    print(f"❌ 未知类目类型: {CATEGORY_TYPE}，可选: {list(DISPATCH.keys())}")
+    sys.exit(1)
+
+CLASSIFY_FN, CN_TITLE_FN, SELLING_FN, HEADERS, ROW_FN = DISPATCH[CATEGORY_TYPE]
+
+# ══════════════════ 应用分类 ══════════════════
+for idx, row in df.iterrows():
+    info = CLASSIFY_FN(row)
+    for k, v in info.items(): df.at[idx, k] = v
+df['cn_title'] = df.apply(CN_TITLE_FN, axis=1)
+df['卖点中文'] = df.apply(SELLING_FN, axis=1)
+
+# ══════════════════ 下载缩略图 ══════════════════
+img_dir = "/tmp/_bsr_images"
 os.makedirs(img_dir, exist_ok=True)
 for idx, row in df.iterrows():
     asin = str(gv(row,'ASIN') or '')
@@ -235,275 +430,88 @@ for idx, row in df.iterrows():
             img.save(local, 'JPEG', quality=80)
     except: pass
 
-print(f"Classified: {len(df)} rows")
-print(f"Whoop 5.0 competitors: {len(df[df['is_competitor']])}")
+# ══════════════════ 构建Excel ══════════════════
+wb = Workbook(); ws = wb.active; ws.title = "BSR分析"
 
-# ===== BUILD EXCEL =====
-wb = Workbook(); ws = wb.active; ws.title = "表带BSR100"
+HDR_FILL = PatternFill("solid","1F4E79"); YEL_FILL = PatternFill("solid","FFFFCC")
+RED_FILL = PatternFill("solid","FFC7CE"); BLU_FILL = PatternFill("solid","BDD7EE")
+GRY_FILL = PatternFill("solid","F0F0F0"); GRN_BG = PatternFill("solid","E2EFDA")
+RED_BG = PatternFill("solid","F2DCDB")
+BF9=Font(bold=True,size=9); NF9=Font(size=9)
+CEN=Alignment(horizontal="center",wrap_text=True,vertical="center")
+WRA=Alignment(wrap_text=True,vertical="top")
+BOR=Border(left=Side('thin'),right=Side('thin'),top=Side('thin'),bottom=Side('thin'))
 
-# Colors
-HDR_FILL = PatternFill("solid","1F4E79")
-HDR_FONT = Font(bold=True,size=9,color="FFFFFF")
-YEL_FILL = PatternFill("solid","FFFFCC")
-RED_FILL = PatternFill("solid","FFC7CE")  # Target product
-BLU_FILL = PatternFill("solid","BDD7EE")  # Competitor / Whoop 5.0
-GRY_FILL = PatternFill("solid","F0F0F0")
-GRN_BG  = PatternFill("solid","E2EFDA")
-RED_BG  = PatternFill("solid","F2DCDB")
-BF8 = Font(bold=True,size=8); NF8 = Font(size=8)
-BF9 = Font(bold=True,size=9); NF9 = Font(size=9)
-CEN = Alignment(horizontal="center",wrap_text=True,vertical="center")
-WRA = Alignment(wrap_text=True,vertical="top")
-BOR = Border(left=Side('thin'),right=Side('thin'),top=Side('thin'),bottom=Side('thin'))
+# 计算最后一列字母
+from openpyxl.utils import get_column_letter as gcl
+LAST_COL = gcl(len(HEADERS))
 
-# R1: Title
-ws.merge_cells("A1:AI1")
-ws["A1"] = f"Replacement Bands BSR100 替换表带分析 | 1USD={EXCHANGE}CNY ({TODAY}) | 目标: omee Whoop5.0硅胶表带 #1 | 「—」=不适用"
+# R1 Title
+ws.merge_cells(f"A1:{LAST_COL}1")
+ws["A1"] = f"{CATEGORY_NAME} BSR100 | 1USD={EXCHANGE}CNY ({TODAY}) | 目标:{TARGET_ASIN} | 「—」=不适用"
 ws["A1"].font = Font(bold=True,size=13,color="1F4E79"); ws["A1"].fill = GRY_FILL; ws["A1"].alignment = CEN
 
-# R2: Stats
-n_comp = len(df[df['is_competitor']])
-n_fba = len(df[df['配送方式'].astype(str).str.upper().str.contains('FBA',na=False)])
+# R2 Stats
+n_comp = int(df['is_competitor'].sum()) if 'is_competitor' in df.columns else 0
 tms = int(sum(v for v in df['月销量'] if not pd.isna(v)))
 trev = int(sum(v for v in df['月销售额($)'] if not pd.isna(v)))
 avg_p = df['价格($)'].mean()
-ws.merge_cells("A2:AI2")
-ws["A2"] = (f"100产品 | 月销{tms:,} | ${trev/1000:,.0f}K(¥{trev*EXCHANGE/10000:,.0f}万) | 均价${avg_p:.0f} | "
-            f"Whoop5.0竞品{n_comp}个 | 官方12个 第三方88个 | FBA{n_fba}个")
+ws.merge_cells(f"A2:{LAST_COL}2")
+ws["A2"] = f"{len(df)}产品 | 月销{tms:,} | ${trev/1000:,.0f}K(¥{trev*EXCHANGE/10000:,.0f}万) | 均价${avg_p:.0f} | 竞品{n_comp}个"
 ws["A2"].font = Font(bold=True,size=9); ws["A2"].fill = GRY_FILL
 
-# R3: Headers
-hdrs = [
-    "#","图","中文标题","品牌","适配设备","材质细分","外观类型","扣环",
-    "价格$","Prime$","Coupon","评分","评数","上架","ASIN","链接",
-    "月销","月销$","月销¥",
-    "包装","佩戴","防水","宽度","品牌类型","AC","BSeller","变体","天数","LQS",
-    "FBA","运费$","A+","视频","卖点(中文)"
-]
-for j,h in enumerate(hdrs,1):
+# R3 Headers
+for j,h in enumerate(HEADERS,1):
     c = ws.cell(row=3,column=j,value=h)
-    c.font = Font(bold=True,size=8,color="000000"); c.fill = YEL_FILL; c.alignment = CEN; c.border = BOR
+    c.font=Font(bold=True,size=8,color="000000"); c.fill=YEL_FILL; c.alignment=CEN; c.border=BOR
 
-# R4+: Data
+# R4+ Data
 for idx,(_,row) in enumerate(df.iterrows()):
     r = 4+idx; asin = str(gv(row,'ASIN') or '')
-    is_tgt = (asin == 'B0FG7Y4VTD')
-    is_comp = row.get('is_competitor', False)
-    
-    vals = [
-        idx+1, None,
-        row.get('cn_title',''),
-        gv(row,'品牌'),
-        row.get('device',''),
-        row.get('material',''),
-        row.get('appearance',''),
-        row.get('clasp',''),
-        f"${gv(row,'价格($)'):,.2f}" if gv(row,'价格($)') and not pd.isna(gv(row,'价格($)')) else '',
-        f"${gv(row,'Prime价格($)'):,.2f}" if gv(row,'Prime价格($)') and not pd.isna(gv(row,'Prime价格($)')) else '—',
-        str(gv(row,'Coupon') or '—'),
-        gv(row,'评分'),
-        f"{int(gv(row,'评分数')):,}" if gv(row,'评分数') and not pd.isna(gv(row,'评分数')) else '',
-        str(gv(row,'上架时间') or '')[:10],
-        asin,
-        gv(row,'商品详情页链接') or f"https://www.amazon.com/dp/{asin}",
-        f"{int(gv(row,'月销量')):,}" if gv(row,'月销量') and not pd.isna(gv(row,'月销量')) else '',
-        f"${gv(row,'月销售额($)'):,.0f}" if gv(row,'月销售额($)') and not pd.isna(gv(row,'月销售额($)')) else '',
-        f"¥{gv(row,'月销售额($)')*EXCHANGE:,.0f}" if gv(row,'月销售额($)') and not pd.isna(gv(row,'月销售额($)')) else '',
-        str(row.get('pack','1')),
-        row.get('position',''),
-        row.get('waterproof',''),
-        row.get('width',''),
-        row.get('brand_type',''),
-        '✅' if str(gv(row,"Amazon's Choice")or'').upper()=='Y' else '',
-        '✅' if str(gv(row,'Best Seller标识')or'').upper()=='Y' else '',
-        str(gv(row,'变体数') or '1'),
-        str(gv(row,'上架天数') or ''),
-        str(gv(row,'LQS') or ''),
-        str(gv(row,'配送方式') or ''),
-        f"${gv(row,'FBA($)'):,.2f}" if gv(row,'FBA($)') and not pd.isna(gv(row,'FBA($)')) else '—',
-        '✅' if str(gv(row,'A+页面')or'').upper()=='Y' else '',
-        '✅' if str(gv(row,'视频介绍')or'').upper()=='Y' else '',
-        row.get('卖点中文',''),
-    ]
-    
+    is_tgt = (asin == TARGET_ASIN); is_comp = row.get('is_competitor', False)
+    vals = ROW_FN(row, idx, asin, is_tgt)
     for j,val in enumerate(vals,1):
-        c = ws.cell(row=r,column=j,value=val)
-        c.font = BF9 if is_tgt else NF9; c.alignment = WRA; c.border = BOR
-        if is_tgt: c.fill = RED_FILL          # Target = RED
-        elif is_comp: c.fill = BLU_FILL       # Competitor = BLUE
-    
-    # Image
-    ip = os.path.join(img_dir, f"{asin}.jpg")
+        c=ws.cell(row=r,column=j,value=val); c.font=BF9 if is_tgt else NF9; c.alignment=WRA; c.border=BOR
+        if is_tgt: c.fill=RED_FILL
+        elif is_comp: c.fill=BLU_FILL
+    ip=os.path.join(img_dir,f"{asin}.jpg")
     if os.path.exists(ip):
-        try: img=XLImage(ip); img.width=53; img.height=53; ws.add_image(img, f"B{r}")
+        try: img=XLImage(ip); img.width=53; img.height=53; ws.add_image(img,f"B{r}")
         except: pass
-    ws.row_dimensions[r].height = 55
+    ws.row_dimensions[r].height=55
 
-# Column widths
-wmap = {'A':3,'B':8,'C':28,'D':11,'E':18,'F':22,'G':20,'H':14,'I':7,'J':7,'K':6,'L':5,'M':7,'N':9,
-        'O':12,'P':8,'Q':7,'R':9,'S':10,'T':4,'U':8,'V':12,'W':5,'X':8,'Y':5,'Z':4,'AA':5,'AB':5,
-        'AC':4,'AD':5,'AE':6,'AF':4,'AG':4,'AH':4,'AI':20}
-for k,w in wmap.items(): ws.column_dimensions[k].width = w
-# Fill missing widths
-for c in ['P','AE','AF','AG','AH']: ws.column_dimensions[c].width = 8
+# 列宽（自动：A-D窄，标题/链接/卖点宽）
+for j in range(1, len(HEADERS)+1):
+    col = gcl(j)
+    hdr = HEADERS[j-1]
+    if hdr in ('#','AC','BSeller','A+','视频','LED','显示屏','安全盖','风扇','冷烟','含喷枪','过滤嘴','捣棒','量杯','过滤器','配方卡','便携包','礼盒'):
+        ws.column_dimensions[col].width = 5
+    elif hdr in ('图',):
+        ws.column_dimensions[col].width = 8
+    elif hdr in ('中文标题','卖点(中文)'):
+        ws.column_dimensions[col].width = 28
+    elif hdr in ('链接',):
+        ws.column_dimensions[col].width = 8
+    elif hdr in ('材质细分','外观类型','适配设备','扣环','材质','类型','品牌类型','佩戴','防水'):
+        ws.column_dimensions[col].width = 18
+    elif hdr in ('ASIN',):
+        ws.column_dimensions[col].width = 12
+    elif hdr in ('价格$','Prime$','月销$','月销¥','运费$'):
+        ws.column_dimensions[col].width = 8
+    else:
+        ws.column_dimensions[col].width = 9
 
-ws.row_dimensions[3].height = 30
-ws.row_dimensions[1].height = 28
-ws.row_dimensions[2].height = 22
-
-# ===== AUTO-FILTER =====
-ws.auto_filter.ref = f"A3:AI{3+len(df)}"
-
-# ===== FREEZE PANES =====
+ws.auto_filter.ref = f"A3:{LAST_COL}{3+len(df)}"
 ws.freeze_panes = "A4"
+ws.row_dimensions[3].height = 30
 
-# ===== CONCLUSIONS SECTION =====
-r = 4 + len(df) + 1
-ws.merge_cells(f"A{r}:AI{r}")
+# ══════════════════ 结论区（按实际数据填入） ══════════════════
+r = 4+len(df)+1
+ws.merge_cells(f"A{r}:{LAST_COL}{r}")
 ws.cell(row=r,column=1,value="═"*20+" 结论分析 "+"═"*20).font = Font(bold=True,size=13,color="1F4E79")
 ws.cell(row=r,column=1).fill = GRY_FILL
-r += 2
+# 这里按 SKILL.md Step 7 填入 市场结构/演变/竞品对标/切入建议/兼容性Q&A
 
-# Stats for conclusion
-whoop_df = df[df['device']=='Whoop 5.0']
-nylon_cnt = len(df[df['material'].str.contains('尼龙',na=False)])
-silicone_cnt = len(df[df['material'].str.contains('硅胶',na=False)])
-metal_cnt = len(df[df['material'].str.contains('不锈钢',na=False)])
-lace_cnt = len(df[df['appearance'].str.contains('蕾丝',na=False)])
-braided_cnt = len(df[df['appearance'].str.contains('编织',na=False)])
-woven_cnt = len(df[df['appearance'].str.contains('针织',na=False)])
-mesh_cnt = len(df[df['appearance'].str.contains('金属编网',na=False)])
-magnetic_cnt = len(df[df['clasp'].str.contains('磁吸',na=False)])
-bicep_cnt = len(df[df['position']=='臂带(Bicep)'])
-official_df = df[df['brand_type']=='官方原装']
-third_df = df[df['brand_type']=='第三方']
-whoop_off = whoop_df[whoop_df['brand_type']=='官方原装']
-whoop_3rd = whoop_df[whoop_df['brand_type']=='第三方']
-
-conclusions = [
-    ("市场结构", [
-        f"• 材质三轴：尼龙{nylon_cnt}款(33%)已超硅胶{silicone_cnt}款(30%)成第一大材质→尼龙时代到来。不锈钢{metal_cnt}款(20%)专注金属编织/米兰尼斯高端线。TPU仅4款边缘化。",
-        f"• 适配格局：Fitbit{nylon_cnt+silicone_cnt+metal_cnt-20}款(55%)是最大品类但碎片化(Versa4/Charge6/Air/Inspire3)→选型是关键。Whoop 5.0 {len(whoop_df)}款增速最快、竞品最少→最佳切入点。Garmin 4款小而美。Apple Watch仅2款→几乎空白但需MFi认证。",
-        f"• 外观分化：蕾丝镂空{lace_cnt}个品(14%)→2023-2024最成功的视觉差异化。编织纹{braided_cnt}个品+针织纹理{woven_cnt}个品→两种尼龙主力外观已占主导。金属编网{mesh_cnt}个品→米兰尼斯风格。纯色素面占比下降→纹理/镂空/编织占了上风。",
-        f"• 扣环蓝海：54%产品未标注扣环类型→意味着标注=差异化。磁吸扣{magnetic_cnt}个品(7%)=萌芽期最强蓝海。魔术贴≈15个品(适配臂带运动场景)。卡扣/针扣各≈10个品。",
-    ]),
-    ("市场演变（时间轴）", [
-        "• 2021年前(<3款): Kollea硅胶(2014)等单打独斗→表带尚未成独立品类，依附在手表配件下",
-        "• 2022-2023(≈15款): Fitbit第三方表带爆发→硅胶纯色+TPU主导。蕾丝硅胶2023年出现(=Maledan)→纯视觉创新引爆。尼龙编织萌芽。",
-        "• 2024(≈25款): Whoop 5.0发布→配件生态大爆发(omee 19色冲BSR#1)。米兰尼斯/金属编织出现。针织尼龙成标配。",
-        "• 2025(≈25款): Google Fitbit Air发布→再一波新设备红利(13配件涌入)。臂带(Bicep)萌芽(WHOOP官方$44→第三方$20)。磁吸扣出头。",
-        "• 2026(≈15款新品): Fitbit Air持续增长。臂带/磁吸/编织纹三者结合成为新趋势方向。",
-        "",
-        "📊 功能渗透率(2026现状): 尼龙33%→成熟期 | 编织纹9%→成长期 | 磁吸扣7%→萌芽期 | 臂带4%→萌芽期 | 蕾丝镂空14%→成熟期 | 多件装→标配",
-    ]),
-    ("竞品对标（Whoop 5.0赛道）", [
-        f"• omee #1 ${whoop_3rd['价格($)'].mean():.0f} x19色→硅胶运动+魔术贴+多色变体策略→靠颜色数量碾压(19个变体=BSR前100最强变体策略)",
-        f"• WHOOP官方均价${whoop_off['价格($)'].mean():.0f}(6款)→SportFlex/ SuperKnit/ CoreKnit/ Bicep/ Navigator等不同场景→品牌溢价+SKU覆盖",
-        f"• Getino/DADO/Tensea 第三方尼龙均价$20-25→材质升级(硅胶→尼龙)可提价$5-10",
-        f"• 价格空白区：第三方硅胶$8-25 vs 官方尼龙$40-90 → 第三方尼龙$15-25是最佳窗口 = 比硅胶溢价50%+、比官方低60%",
-    ]),
-    ("切入建议", [
-        "",
-        "🥇 首推：尼龙编织+磁吸扣（适配Whoop 5.0 + Fitbit Air）",
-        f"  定价$15-19 | 配置：编织尼龙+磁吸扣+2件装+标Sweatproof+6-8色",
-        f"  理由：①编织纹{braided_cnt}个品(9%)=成长期<成熟期→还有空间 ②磁吸扣{magnetic_cnt}个品(7%)=萌芽期→做就领先 ③尼龙已超硅胶→趋势不可逆 ④2件装=换洗需求自然复购",
-        "",
-        "🥈 次推：尼龙臂带（适配Whoop 5.0）",
-        f"  定价$20-25 | 配置：针织尼龙+魔术贴+标Sweatproof+透气设计",
-        f"  理由：①臂带仅{bicep_cnt}个品→几乎处女地 ②WHOOP官方臂带$44→留55%差价 ③健身房/CrossFit刚需→场景明确",
-        "",
-        "❌ 不做：纯硅胶基础款(30个品$6以下→红海) | 单件装无配件 | Apple/Garmin(护城河深/体量小) | 蕾丝硅胶(14品已成熟→新品难突围)",
-        "",
-        f"✅ 做: 编织尼龙磁吸款$15-19 + 臂带款$20-25 | 时间窗口: 2026Q4-2027H1磁吸+编织尚在萌芽成长期→6-12月领先优势",
-    ]),
-]
-
-for section_title, section_lines in conclusions:
-    r += 1
-    ws.merge_cells(f"A{r}:AI{r}")
-    ws.cell(row=r,column=1,value=f"{section_title}").font = Font(bold=True,size=11,color="1F4E79")
-    for line in section_lines:
-        r += 1
-        ws.merge_cells(f"A{r}:AI{r}")
-        if not line:
-            ws.row_dimensions[r].height = 6
-            continue
-        c = ws.cell(row=r,column=1,value=line)
-        if line.startswith('🥇') or line.startswith('🥈'):
-            c.font = BF9; c.fill = GRN_BG
-        elif line.startswith('❌'):
-            c.font = BF9; c.fill = RED_BG
-        elif line.startswith('✅'):
-            c.font = Font(bold=True,size=11,color="006100"); c.fill = GRN_BG
-        elif line.startswith('📊'):
-            c.font = BF9
-        else:
-            c.font = NF9
-        ws.row_dimensions[r].height = max(20, len(line)*0.6 + 15)
-
-# ===== Q&A SECTION =====
-r += 2
-ws.merge_cells(f"A{r}:AI{r}")
-ws.cell(row=r,column=1,value="⚠️ 关键核实：Whoop 5.0 兼容性 & 双机型适配").font = Font(bold=True,size=13,color="FF0000")
-ws.cell(row=r,column=1).fill = RED_BG
-r += 2
-
-qa_lines = [
-    "Q1: Whoop 5.0 表带能用在 Whoop 4.0 上吗？",
-    "",
-    "❌ 答案：不能。Whoop 5.0 和 4.0 的表带接口物理不兼容。",
-    "",
-    "   核实来源：逐条检查了BSR TOP100中全部15个Whoop 5.0表带的产品卖点(Product Bullets)，",
-    "   其中11个明确标注「Not compatible with Whoop 4.0」。",
-    "",
-    "   明确标注的品牌：omee(4款)、WHOOP官方(3款)、Getino(2款)、DADO、Anpzband、Tensea",
-    "   未提及4.0的：WHOOP SuperKnit Luxe、iprisu、Getino Sport、WHOOP Navigator",
-    "   → 即使是未提及的型号，由于Whoop 5.0/4.0是不同物理接口，同样不兼容。",
-    "",
-    "   结论：做Whoop 5.0表带≠兼容4.0。如果要做4.0市场，需要单独开模。",
-    "",
-    "",
-    "Q2: 有没有同时适配 Whoop 5.0 + Fitbit Air 两种机型的表带？",
-    "",
-    "❌ 答案：没有。BSR TOP100中没有任何产品同时适配两种机型。",
-    "",
-    "   核实来源：扫描了全部100个产品的标题+五点卖点，",
-    "   0个产品同时提及Whoop和Fitbit两个品牌。",
-    "",
-    "   原因：Whoop(卡扣式)和Fitbit Air(快拆式)的物理接口完全不同，",
-    "   一个表带在物理上不可能同时适配两种接口。",
-    "",
-    "   但如果你的目标是做「一个品牌、两条产品线」：",
-    "   → 同一种材质/设计语言，分别做Whoop 5.0版和Fitbit Air版",
-    "   → 外观统一、材质统一、包装统一→品牌感强",
-    "   → 这是很多第三方配件品牌的常见策略(如omee做了Whoop+Fitbit双线)",
-    "",
-    "   查看类目内做了多机型的品牌：",
-    "   • omee: 专注Whoop 5.0(4个ASIN)，不同材质(硅胶/尼龙/米兰尼斯/臂带)",
-    "   • Getino: 同时做Whoop 5.0(3款)和Fitbit Charge/Versa(3款)→跨机型策略",
-    "   • Maledan: 专注Fitbit全系列(6款)，覆盖Charge/Versa/Inspire/Luxe",
-    "   → 这些品牌用同一个品牌名称覆盖不同机型，但每个ASIN只适配一种机型。",
-]
-
-for line in qa_lines:
-    r += 1
-    ws.merge_cells(f"A{r}:AI{r}")
-    if not line:
-        ws.row_dimensions[r].height = 6
-        continue
-    c = ws.cell(row=r,column=1,value=line)
-    if line.startswith('Q1') or line.startswith('Q2'):
-        c.font = Font(bold=True,size=12,color="1F4E79")
-    elif line.startswith('❌'):
-        c.font = Font(bold=True,size=11,color="FF0000")
-    elif line.startswith('   结论') or line.startswith('   如果'):
-        c.font = Font(bold=True,size=9,color="006100")
-    else:
-        c.font = NF9
-    ws.row_dimensions[r].height = max(18, len(line)*0.5 + 14)
-
-# Save
-fp = "/tmp/BSR_Bands_Final_v2.xlsx"
-wb.save(fp)
-print(f"\n✅ Saved: {fp}")
+wb.save(OUTPUT)
+print(f"\n✅ Saved: {OUTPUT}")
 wb.close()
