@@ -5,13 +5,13 @@ type: case（案例）
 category: classification_rules（分类规则）
 tags: [失败案例, 偷懒, 中文标题, 分类太粗, 场景词误判, 词边界, Alexa核实, 烧烤刷, Grill Brushes]
 roles: [Commander, Product Analyst, Data Verifier]
-status: pending（待审核）
+status: verified（已验证）
 confidence: A（实际发生+用户亲自纠正）
 source: Grill Brushes BSR调研返工记录
 evidence: 威猛先生2026-08-25亲自纠正：中文标题缺、分类不够详细、有没有严格按skill
 created_at: 2026-08-25
 updated_at: 2026-08-25
-reviewed_by: 待审核
+reviewed_by: Commander（2026-09-27 周复盘自动确认，已活跃4+周）
 related: [KB-FAIL-002, KB-FAIL-005, KB-CLASSIFY-001, KB-FIELD-005]
 ---
 

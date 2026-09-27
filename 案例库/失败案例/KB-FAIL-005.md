@@ -5,13 +5,13 @@ type: case（案例）
 category: classification_rules（分类规则）
 tags: [失败案例, 分类错误, 电动, 手动, 机械按压, automatic, dispenser, Alexa核实, 钻石画工具, 吸钻笔]
 roles: [Commander, Product Analyst, Data Verifier]
-status: pending（待审核）
+status: verified（已验证）
 confidence: A（实际发生+用户亲自纠正）
 source: Diamond Painting BSR调研返工记录
 evidence: 威猛先生2026-08-24亲自纠正：B0HC72TVK4等6个"Automatic Bead Dispenser"被误判为电动，Alexa核实为机械手动按压
 created_at: 2026-08-24
 updated_at: 2026-08-24
-reviewed_by: 待审核
+reviewed_by: Commander（2026-09-27 周复盘自动确认，已活跃4+周）
 related: [KB-CLASSIFY-001, KB-FIELD-001, KB-FIELD-002]
 ---
 
